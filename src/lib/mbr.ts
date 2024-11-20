@@ -165,7 +165,7 @@ export class MinimumBoundingRectangle {
         return { minProj, maxProj };
     }
 
-    private grahamScan(points: Vector2[]): Vector2[] {
+    public grahamScan(points: Vector2[]): Vector2[] {
         if (points.length < 3) return points;
 
         // 找到最下方的点
