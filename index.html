@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Three.js MBR Demo</title>
+    <style>
+      body { margin: 0; overflow: hidden; }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from 'three';
+      import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+      import { GUI } from 'lil-gui';
+      import { MinimumBoundingRectangle } from './src/lib/mbr.ts';
+      import TWEEN from '@tweenjs/tween.js';
+
+      const scene = new THREE.Scene();
+      // const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      camera.position.set(0, 10, 20);
+      controls.update();
+
+      const points = [];
+      const pointMeshes = [];
+      let hullLine = new THREE.Line();
+      let hullMesh = new THREE.Mesh();
+      let mbrMesh = new THREE.Mesh();
+      let hullVisible = false;
+      let mbrVisible = true;
+
+      function addRandomPoint() {
+        const x = Math.random() * 10 - 5;
+        const y = Math.random() * 10 - 5;
+        const z = Math.random() * 10 - 5;
+        points.push(x, y, z);
+
+        const pointGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+        const pointMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const pointMesh = new THREE.Mesh(pointGeometry, pointMaterial);
+        pointMesh.position.set(x, y, z);
+        scene.add(pointMesh);
+        pointMeshes.push(pointMesh);
+
+        updateMBR();
+      }
+
+      function removeRandomPoint() {
+        if (points.length < 3) return;
+        points.splice(-3, 3);
+        const pointMesh = pointMeshes.pop();
+        scene.remove(pointMesh);
+        updateMBR();
+      }
+
+      function updateMBR() {
+        const mbr = new MinimumBoundingRectangle().fromPoints(points);
+
+        const boxGeometry = new THREE.BoxGeometry(mbr.halfSizes.x * 2, mbr.halfSizes.y * 2, mbr.halfSizes.z * 2);
+        const boxMaterial = new THREE.MeshBasicMaterial({
+          color: 0x00ff00,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.3
+        });
+        const newMbrMesh = new THREE.Mesh(boxGeometry, boxMaterial);
+        newMbrMesh.position.copy(mbr.center);
+        newMbrMesh.setRotationFromMatrix(mbr.rotation);
+
+        scene.remove(mbrMesh);
+        mbrMesh = newMbrMesh;
+        if (mbrVisible) {
+          scene.add(mbrMesh);
+        }
+
+        if (hullVisible) {
+          updateHull();
+        }
+      }
+
+      function updateHull() {
+        const mbr = new MinimumBoundingRectangle().fromPoints(points);
+        const hull = mbr.grahamScan(points.map((_, i) => new THREE.Vector2(points[i * 3], points[i * 3 + 2])));
+
+        const hullGeometry = new THREE.BufferGeometry().setFromPoints(
+          hull.map(p => new THREE.Vector3(p.x, 0, p.y))
+        );
+        hullGeometry.setIndex([...Array(hull.length).keys(), 0]);
+        const hullLineMaterial = new THREE.LineBasicMaterial({
+          color: 0x0000ff,
+          linewidth: 2
+        });
+
+        const vertices = [];
+        const indices = [];
+
+        const center = new THREE.Vector2(0, 0);
+        hull.forEach(p => {
+          center.add(p);
+        });
+        center.divideScalar(hull.length);
+
+        vertices.push(center.x, 0, center.y);
+        hull.forEach(p => {
+          vertices.push(p.x, 0, p.y);
+        });
+
+        for (let i = 0; i < hull.length; i++) {
+          indices.push(
+            0,
+            i + 1,
+            ((i + 1) % hull.length) + 1
+          );
+        }
+
+        const hullShapeGeometry = new THREE.BufferGeometry();
+        hullShapeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        hullShapeGeometry.setIndex(indices);
+        hullShapeGeometry.computeVertexNormals();
+
+        const hullShapeMaterial = new THREE.MeshBasicMaterial({
+          color: 0x0000ff,
+          transparent: true,
+          opacity: 0.2,
+          side: THREE.DoubleSide,
+          depthWrite: false
+        });
+
+        scene.remove(hullLine);
+        scene.remove(hullMesh);
+
+        hullLine = new THREE.Line(hullGeometry, hullLineMaterial);
+        hullMesh = new THREE.Mesh(hullShapeGeometry, hullShapeMaterial);
+
+        if (hullVisible) {
+          scene.add(hullMesh);
+          scene.add(hullLine);
+        }
+      }
+
+      // 添加相机视野更新函数
+      function updateCameraViewport() {
+        const aspect = window.innerWidth / window.innerHeight;
+        const viewSize = 15; // 控制视野大小
+        camera.left = -viewSize * aspect;
+        camera.right = viewSize * aspect;
+        camera.top = viewSize;
+        camera.bottom = -viewSize;
+        camera.updateProjectionMatrix();
+      }
+
+      // 初始化时调用一次
+      updateCameraViewport();
+
+      // 添加窗口大小变化监听
+      window.addEventListener('resize', () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        updateCameraViewport();
+      });
+
+      function resetCamera() {
+        const duration = 1000;
+
+        // 暂时禁用控制器
+        controls.enabled = false;
+
+        // 保存当前状态
+        const startPos = camera.position.clone();
+        const startTarget = controls.target.clone();
+
+        // 设置目标状态 - 从正上方俯视
+        const targetPos = new THREE.Vector3(0, 20, 0); // 增加高度以获得更好的视野
+        const targetTarget = new THREE.Vector3(0, 0, 0);
+
+        // 相机位置动画
+        new TWEEN.Tween(startPos)
+          .to(targetPos, duration)
+          .easing(TWEEN.Easing.Cubic.InOut)
+          .onUpdate(() => {
+            camera.position.copy(startPos);
+            // 确保相机始终朝向目标点
+            camera.lookAt(targetTarget);
+          })
+          .start();
+
+        // 控制器目标点动画
+        new TWEEN.Tween(startTarget)
+          .to(targetTarget, duration)
+          .easing(TWEEN.Easing.Cubic.InOut)
+          .onUpdate(() => {
+            controls.target.copy(startTarget);
+          })
+          .onComplete(() => {
+            // 重新启用控制器
+            controls.enabled = true;
+
+            // 设置控制器限制，防止相机倾斜过大
+            controls.minPolarAngle = 0;
+            controls.maxPolarAngle = Math.PI / 2;
+
+            // 更新控制器
+            controls.update();
+          })
+          .start();
+      }
+
+      const gui = new GUI();
+      const cameraFolder = gui.addFolder('Camera');
+      cameraFolder.add({ resetView: resetCamera }, 'resetView').name('Top View');
+
+      gui.add({ addPoint: addRandomPoint }, 'addPoint').name('Add Point');
+      gui.add({ removePoint: removeRandomPoint }, 'removePoint').name('Remove Point');
+      gui.add({ toggleHull: () => {
+        hullVisible = !hullVisible;
+        if (hullVisible) {
+          updateHull();
+        } else {
+          scene.remove(hullLine);
+          scene.remove(hullMesh);
+        }
+      }}, 'toggleHull').name('Toggle Hull');
+      gui.add({ toggleMBR: () => {
+        mbrVisible = !mbrVisible;
+        if (mbrVisible) {
+          scene.add(mbrMesh);
+        } else {
+          scene.remove(mbrMesh);
+        }
+      }}, 'toggleMBR').name('Toggle MBR');
+
+      function animate() {
+        requestAnimationFrame(animate);
+        TWEEN.update();
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      for (let i = 0; i < 10; i++) {
+        addRandomPoint();
+      }
+    </script>
+  </body>
+</html>
