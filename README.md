@@ -4,6 +4,10 @@ A visualization demo for Minimum Bounding Rectangle (MBR) calculation using [Con
 
 [English](README.md) | [中文](WIKI-ZH.md)
 
+![MBR Algorithm Visualization](/public/images/mbr.png)
+
+![Hull](/public/images/hull.png)
+
 ## Quick Start
 
 ```bash
