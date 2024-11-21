@@ -74,7 +74,7 @@ export class Scene3D {
 
     gui.add({ addPoint: this.addRandomPoint.bind(this) }, 'addPoint').name('Add Point');
     gui.add({ removePoint: this.removeRandomPoint.bind(this) }, 'removePoint').name('Remove Point');
-    gui.add({ 
+    gui.add({
       toggleHull: () => {
         this.hullVisible = !this.hullVisible;
         if (this.hullVisible) {
@@ -213,10 +213,10 @@ export class Scene3D {
   private lookAtTop(): void {
     const duration = 1500;
     this.tweenGroup = new Group();
-    
+
     // 保持与初始化时相同的视角范围
     const viewSize = 10;
-    
+
     // 设置目标位置 - 保持与目标点的距离，只改变角度
     const targetPos = new THREE.Vector3(0, viewSize * 2, 0.001); // 高度是视角范围的2倍
     const targetTarget = new THREE.Vector3(0, 0, 0);
@@ -240,7 +240,7 @@ export class Scene3D {
       }, duration)
       .easing(Easing.Cubic.InOut)
       .start();
-    
+
     this.tweenGroup.add(tweenPos);
     this.tweenGroup.add(tweenTarget);
 
@@ -264,11 +264,11 @@ export class Scene3D {
     if(this.tweenGroup) {
       this.tweenGroup.update();
     }
-    
+
     if (this.controls.enabled) {
       this.controls.update();
     }
-    
+
     this.renderer.render(this.scene, this.camera);
   }
-} 
+}
